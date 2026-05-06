@@ -32,6 +32,18 @@
 
 ## 🏗️ System Architecture
 
+```mermaid
+graph TD
+    User([Team Member]) -->|Next.js App| Frontend[Frontend Layer]
+    Frontend -->|Auth & Sync| Firebase{Firebase Platform}
+    Frontend -->|API Requests| Backend[Serverless API Routes]
+    Backend -->|Actionable Prompts| AI[Gemini / OpenRouter]
+    Firebase -->|Storage| Firestore[(Firestore DB)]
+    AI -->|Generated Plan/Tasks| Backend
+    Backend -->|JSON Response| Frontend
+    GithubAPI[GitHub Repos] -->|History Fetch| Frontend
+```
+
 - **Frontend Framework**: [Next.js 16 (App Router)](https://nextjs.org/)
 - **Database & Sync**: [Cloud Firestore](https://firebase.google.com/docs/firestore) (NoSQL)
 - **Authentication**: [Firebase Auth](https://firebase.google.com/docs/auth)
