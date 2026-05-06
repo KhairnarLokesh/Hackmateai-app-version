@@ -8,6 +8,10 @@
 [![Gemini AI](https://img.shields.io/badge/Google_Gemini-Powered-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
+<br/>
+
+[**🌐 Explore the Live App Here**](https://hackmateai-production.up.railway.app/)
+
 </div>
 
 ---
