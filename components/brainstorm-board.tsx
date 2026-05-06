@@ -30,7 +30,7 @@ function CollaborativeCursors({ projectId }: { projectId: string }) {
 
             // Filter out self and inactive users (inactive > 60s)
             // Note: firestore timestamps need conversion, handling both Date and Timestamp
-            const activeUsers = users.filter(u = > {
+            const activeUsers = users.filter(u => {
                 if (u.userId === user.uid) return false
 
                 // Safety check for timestamps
