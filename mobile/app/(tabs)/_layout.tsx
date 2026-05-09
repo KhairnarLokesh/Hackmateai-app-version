@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { LayoutDashboard, User } from 'lucide-react-native';
+import { LayoutDashboard, User, MessageSquare } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -30,6 +30,13 @@ export default function TabLayout() {
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ color }) => <LayoutDashboard size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }) => <MessageSquare size={24} color={color} />,
         }}
       />
       <Tabs.Screen
