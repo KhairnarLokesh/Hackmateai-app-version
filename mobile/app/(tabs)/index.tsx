@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -17,33 +17,36 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
-const MOCK_PROJECTS = [
-  {
-    id: '1',
-    name: 'HackMate AI',
-    status: 'Demo Mode',
-    deadline: 'Ended',
-    teamSize: 4,
-  },
-  {
-    id: '2',
-    name: 'EcoTrack Mobile',
-    status: 'Active',
-    deadline: 'Ends in 12h',
-    teamSize: 2,
-  },
-  {
-    id: '3',
-    name: 'NeuroSync API',
-    status: 'Active',
-    deadline: 'Ends in 24h',
-    teamSize: 5,
-  },
-];
+import { auth, db } from '@/lib/firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { useAuth } from '@/lib/auth-context';
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { teamId } = useAuth();
+  
+  const [projects, setProjects] = useState<any[]>([]);
+  const targetTeamId = teamId || 'DEMO_TEAM';
+
+  React.useEffect(() => {
+    const projectsRef = collection(db, 'teams', targetTeamId, 'projects');
+    const unsubscribe = onSnapshot(projectsRef, (snapshot) => {
+      const fetchedProjects = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      // Sort by newest first based on createdAt
+      fetchedProjects.sort((a: any, b: any) => {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+      setProjects(fetchedProjects);
+    });
+
+    return () => unsubscribe();
+  }, [targetTeamId]);
 
   return (
     <View style={styles.container}>
@@ -76,7 +79,11 @@ export default function DashboardScreen() {
 
         {/* Quick Actions */}
         <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionButton} activeOpacity={0.8}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            activeOpacity={0.8}
+            onPress={() => router.push('/idea-lab')}
+          >
             <BlurView intensity={30} tint="dark" style={styles.actionBtnBlur}>
               <View style={[styles.actionBtnIcon, { backgroundColor: 'rgba(34, 197, 94, 0.2)' }]}>
                 <Plus size={18} color="#22c55e" />
@@ -112,33 +119,43 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {MOCK_PROJECTS.length > 0 ? (
+        {projects.length > 0 ? (
           <View style={styles.projectsList}>
-            {MOCK_PROJECTS.map((project) => (
-              <BlurView key={project.id} intensity={20} tint="dark" style={styles.projectCard}>
-                <View style={styles.projectHeader}>
-                  <View style={styles.projectNameRow}>
-                    <FolderOpen size={20} color="#fff" />
-                    <Text style={styles.projectName}>{project.name}</Text>
+            {projects.map((project) => (
+              <TouchableOpacity 
+                key={project.id} 
+                activeOpacity={0.8}
+                onPress={() => router.push(`/project/${project.id}`)}
+              >
+                <BlurView intensity={20} tint="dark" style={styles.projectCard}>
+                  <View style={styles.projectHeader}>
+                    <View style={styles.projectNameRow}>
+                      <FolderOpen size={20} color="#fff" />
+                      <Text style={styles.projectName}>{project.name}</Text>
+                    </View>
+                    <View style={[
+                      styles.badge, 
+                      project.status === 'Demo Mode' ? styles.badgeDemo : styles.badgeActive
+                    ]}>
+                      <Text style={styles.badgeText}>{project.status || 'Active'}</Text>
+                    </View>
                   </View>
-                  <View style={[
-                    styles.badge, 
-                    project.status === 'Demo Mode' ? styles.badgeDemo : styles.badgeActive
-                  ]}>
-                    <Text style={styles.badgeText}>{project.status}</Text>
-                  </View>
-                </View>
 
-                <View style={styles.projectFooter}>
-                  <View style={styles.footerItem}>
-                    <Clock size={14} color="rgba(255,255,255,0.5)" />
-                    <Text style={styles.footerText}>{project.deadline}</Text>
+                  <View style={styles.projectFooter}>
+                    <View style={styles.footerItem}>
+                      <Clock size={14} color="rgba(255,255,255,0.5)" />
+                      <Text style={styles.footerText}>
+                        {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'Just now'}
+                      </Text>
+                    </View>
+                    <View style={styles.footerItem}>
+                      <Text style={styles.footerText}>
+                        {project.techStack ? `${project.techStack.length} techs` : '0 techs'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.footerItem}>
-                    <Text style={styles.footerText}>{project.teamSize} members</Text>
-                  </View>
-                </View>
-              </BlurView>
+                </BlurView>
+              </TouchableOpacity>
             ))}
           </View>
         ) : (
