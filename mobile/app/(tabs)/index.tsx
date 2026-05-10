@@ -92,7 +92,11 @@ export default function DashboardScreen() {
             </BlurView>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton} activeOpacity={0.8}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            activeOpacity={0.8}
+            onPress={() => router.push('/join-project')}
+          >
             <BlurView intensity={30} tint="dark" style={styles.actionBtnBlur}>
               <View style={[styles.actionBtnIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
                 <LinkIcon size={18} color="#d8b4fe" />

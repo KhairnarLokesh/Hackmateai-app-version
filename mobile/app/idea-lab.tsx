@@ -57,7 +57,12 @@ export default function IdeaLabScreen() {
     
     try {
       setLoading(true);
-      const projectRef = doc(collection(db, 'teams', targetTeamId, 'projects'));
+      // Generate a 6-character short code for easy sharing
+      const generateProjectCode = () => {
+        return Math.random().toString(36).substring(2, 8).toUpperCase();
+      };
+      const projectCode = generateProjectCode();
+      const projectRef = doc(db, 'teams', targetTeamId, 'projects', projectCode);
       
       await setDoc(projectRef, {
         name: result.name,

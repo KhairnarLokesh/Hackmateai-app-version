@@ -119,9 +119,16 @@ export default function KanbanBoardScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {project?.name || 'Project Board'}
-        </Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {project?.name || 'Project Board'}
+          </Text>
+          {id && (
+            <View style={styles.codeBadge}>
+              <Text style={styles.codeBadgeText}>Code: {id}</Text>
+            </View>
+          )}
+        </View>
         <View style={{ width: 24 }} />
       </View>
 
@@ -249,8 +256,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#fff',
-    flex: 1,
     textAlign: 'center',
+    marginBottom: 4,
+  },
+  codeBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  codeBadgeText: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '700',
   },
   tabsContainer: {
     flexDirection: 'row',

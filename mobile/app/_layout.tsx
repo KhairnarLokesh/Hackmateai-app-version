@@ -25,8 +25,8 @@ function InitialLayout() {
   useEffect(() => {
     if (loading) return;
 
-    // BYPASS AUTH FOR TESTING
-    const bypassAuth = true;
+    // ENABLE AUTH FOR PRODUCTION
+    const bypassAuth = false;
 
     if (bypassAuth) {
       // Allow navigation to idea-lab, project, and tabs
@@ -62,6 +62,7 @@ function InitialLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="idea-lab" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="join-project" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="project/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>

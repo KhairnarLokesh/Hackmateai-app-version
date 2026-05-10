@@ -30,7 +30,7 @@ Return the result strictly as a JSON object with the following structure (do not
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-1.5-flash',
         max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -82,7 +82,7 @@ Provide a concise, helpful, and technical response. If they are asking for code,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-1.5-flash',
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       }),

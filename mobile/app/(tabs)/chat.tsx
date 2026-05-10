@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Send, Bot, User as UserIcon, MessageSquare } from 'lucide-react-native';
+import { Send, Bot, User as UserIcon, MessageSquare, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth, db } from '@/lib/firebase';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
@@ -27,11 +27,14 @@ interface Message {
   isAiMentor: boolean;
 }
 
+type ChatMode = 'team' | 'mentor';
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { teamId } = useAuth();
   const targetTeamId = teamId || 'DEMO_TEAM';
 
+  const [activeMode, setActiveMode] = useState<ChatMode>('team');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -39,7 +42,15 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
-    const messagesRef = collection(db, 'teams', targetTeamId, 'messages');
+    setLoading(true);
+    let messagesRef;
+    
+    if (activeMode === 'team') {
+      messagesRef = collection(db, 'teams', targetTeamId, 'messages');
+    } else {
+      const uid = auth.currentUser?.uid || 'anonymous';
+      messagesRef = collection(db, 'users', uid, 'mentor_messages');
+    }
     
     const unsubscribe = onSnapshot(messagesRef, (snapshot) => {
       const fetchedMessages = snapshot.docs.map(doc => ({
@@ -60,7 +71,7 @@ export default function ChatScreen() {
     });
 
     return () => unsubscribe();
-  }, [targetTeamId]);
+  }, [activeMode, targetTeamId]);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
@@ -68,32 +79,41 @@ export default function ChatScreen() {
     const textToSend = inputText.trim();
     setInputText(''); // Clear immediately for snappy UI
     
-    const isAiQuery = textToSend.toLowerCase().startsWith('@ai') || textToSend.toLowerCase().startsWith('@mentor');
-    
     try {
-      const messagesRef = collection(db, 'teams', targetTeamId, 'messages');
-      
-      // 1. Save user's message
-      await addDoc(messagesRef, {
-        text: textToSend,
-        createdAt: new Date().toISOString(),
-        userId: auth.currentUser?.uid || 'anonymous',
-        isAiMentor: false,
-      });
-
-      // 2. If it's an AI query, ask the mentor
-      if (isAiQuery) {
-        setIsAiTyping(true);
-        // Remove the trigger word from the prompt
-        const cleanQuery = textToSend.replace(/^@(ai|mentor)\s*/i, '');
+      if (activeMode === 'team') {
+        const messagesRef = collection(db, 'teams', targetTeamId, 'messages');
         
-        const aiResponse = await askAiMentor(cleanQuery);
+        // Save user's message to team chat
+        await addDoc(messagesRef, {
+          text: textToSend,
+          createdAt: new Date().toISOString(),
+          userId: auth.currentUser?.uid || 'anonymous',
+          isAiMentor: false,
+        });
+        
+      } else {
+        // Mentor Mode
+        const uid = auth.currentUser?.uid || 'anonymous';
+        const messagesRef = collection(db, 'users', uid, 'mentor_messages');
+        
+        // 1. Save user's message to mentor chat
+        await addDoc(messagesRef, {
+          text: textToSend,
+          createdAt: new Date().toISOString(),
+          userId: uid,
+          isAiMentor: false,
+        });
+
+        setIsAiTyping(true);
+        
+        // 2. Ask the mentor
+        const aiResponse = await askAiMentor(textToSend);
         
         // 3. Save AI's response
         await addDoc(messagesRef, {
           text: aiResponse,
           createdAt: new Date().toISOString(),
-          userId: 'ai_mentor',
+          userId: uid, // Use uid to prevent any strict Firestore rules from blocking
           isAiMentor: true,
         });
         setIsAiTyping(false);
@@ -105,8 +125,8 @@ export default function ChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMe = item.userId === (auth.currentUser?.uid || 'anonymous');
     const isAi = item.isAiMentor;
+    const isMe = item.userId === (auth.currentUser?.uid || 'anonymous') && !isAi;
 
     return (
       <View style={[
@@ -124,6 +144,9 @@ export default function ChatScreen() {
           isMe ? styles.messageBubbleMe : (isAi ? styles.messageBubbleAi : styles.messageBubbleOther)
         ]}>
           {isAi && <Text style={styles.aiLabel}>AI Mentor</Text>}
+          {!isAi && !isMe && activeMode === 'team' && (
+            <Text style={styles.userLabel}>Team Member</Text>
+          )}
           <Text style={[styles.messageText, isMe ? styles.messageTextMe : styles.messageTextOther]}>
             {item.text}
           </Text>
@@ -147,10 +170,36 @@ export default function ChatScreen() {
 
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <View style={styles.headerTitleRow}>
-          <MessageSquare size={24} color="#fff" />
-          <Text style={styles.headerTitle}>Team Chat</Text>
+          {activeMode === 'team' ? (
+            <MessageSquare size={24} color="#fff" />
+          ) : (
+            <Sparkles size={24} color="#d8b4fe" />
+          )}
+          <Text style={styles.headerTitle}>
+            {activeMode === 'team' ? 'Team Chat' : 'AI Mentor'}
+          </Text>
         </View>
-        <Text style={styles.headerSubtitle}>Tag @ai or @mentor for help</Text>
+        <Text style={styles.headerSubtitle}>
+          {activeMode === 'team' ? 'Collaborate with your team' : 'Your private 1-on-1 AI assistant'}
+        </Text>
+
+        {/* Segmented Control */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity 
+            style={[styles.toggleButton, activeMode === 'team' && styles.activeToggle]}
+            onPress={() => setActiveMode('team')}
+          >
+            <MessageSquare size={16} color={activeMode === 'team' ? '#fff' : 'rgba(255,255,255,0.5)'} />
+            <Text style={[styles.toggleText, activeMode === 'team' && styles.activeToggleText]}>Team</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.toggleButton, activeMode === 'mentor' && styles.activeToggle]}
+            onPress={() => setActiveMode('mentor')}
+          >
+            <Bot size={16} color={activeMode === 'mentor' ? '#fff' : 'rgba(255,255,255,0.5)'} />
+            <Text style={[styles.toggleText, activeMode === 'mentor' && styles.activeToggleText]}>Mentor</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -166,10 +215,20 @@ export default function ChatScreen() {
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Bot size={48} color="rgba(255,255,255,0.1)" style={{ marginBottom: 16 }} />
+              <Text style={styles.emptyStateText}>
+                {activeMode === 'team' 
+                  ? 'No messages yet. Start the conversation!' 
+                  : 'Hi there! I am your AI Mentor. How can I help you build today?'}
+              </Text>
+            </View>
+          }
         />
       )}
 
-      {isAiTyping && (
+      {isAiTyping && activeMode === 'mentor' && (
         <View style={styles.typingIndicator}>
           <Bot size={16} color="#d8b4fe" style={{ marginRight: 8 }} />
           <Text style={styles.typingText}>AI Mentor is thinking...</Text>
@@ -179,7 +238,7 @@ export default function ChatScreen() {
       <BlurView intensity={40} tint="dark" style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 100) }]}>
         <TextInput
           style={styles.textInput}
-          placeholder="Type a message or @ai..."
+          placeholder={activeMode === 'team' ? "Type a message..." : "Ask your AI Mentor..."}
           placeholderTextColor="rgba(255,255,255,0.4)"
           value={inputText}
           onChangeText={setInputText}
@@ -223,6 +282,37 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
+    marginBottom: 16,
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  toggleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 8,
+  },
+  activeToggle: {
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  activeToggleText: {
+    color: '#fff',
   },
   centerContainer: {
     flex: 1,
@@ -233,6 +323,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 20,
     gap: 16,
+    flexGrow: 1,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 60,
+    paddingHorizontal: 32,
+  },
+  emptyStateText: {
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 22,
   },
   messageWrapper: {
     flexDirection: 'row',
@@ -285,6 +389,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#d8b4fe',
+    marginBottom: 4,
+  },
+  userLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
     marginBottom: 4,
   },
   messageText: {
