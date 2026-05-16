@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,26 +8,93 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { useRouter } from 'expo-router';
 import {
   User,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/lib/auth-context';
+import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
+import { doc, updateDoc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const { user, userProfile, refreshTeamId } = useAuth();
 
-  const [name, setName] = useState('Hacker');
-  const [skills, setSkills] = useState('React, Node.js');
-  const [github, setGithub] = useState('hacker123');
+  const [name, setName] = useState('');
+  const [skills, setSkills] = useState('');
+  const [github, setGithub] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const handleLogout = () => {
-    // Navigate back to the main landing page
-    router.replace('/');
+  useEffect(() => {
+    if (userProfile) {
+      setName(userProfile.displayName || '');
+      setSkills(userProfile.skills || '');
+      setGithub(userProfile.githubUsername || '');
+    }
+  }, [userProfile]);
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      if (!user) {
+        setError('No user logged in');
+        return;
+      }
+
+      // Update Firebase Auth profile
+      await updateProfile(user, {
+        displayName: name.trim(),
+      });
+
+      // Update Firestore user document
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName: name.trim(),
+        skills: skills.trim() || null,
+        githubUsername: github.trim() || null,
+        profileCompleted: true,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await refreshTeamId();
+      setSuccess('Profile updated successfully!');
+      
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      // The auth listener in _layout.tsx will redirect to /(auth)/login automatically
+    } catch (err: any) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const getInitial = () => {
+    if (name) return name.charAt(0).toUpperCase();
+    if (user?.email) return user.email.charAt(0).toUpperCase();
+    return 'U';
   };
 
   return (
@@ -55,11 +122,11 @@ export default function ProfileScreen() {
                 colors={['#22c55e', '#16a34a']}
                 style={styles.avatarGradient}
               >
-                <Text style={styles.avatarText}>H</Text>
+                <Text style={styles.avatarText}>{getInitial()}</Text>
               </LinearGradient>
             </View>
-            <Text style={styles.username}>Hacker</Text>
-            <Text style={styles.email}>hacker@example.com</Text>
+            <Text style={styles.username}>{name || 'User'}</Text>
+            <Text style={styles.email}>{user?.email || 'No email'}</Text>
           </View>
 
           {/* Profile Section */}
@@ -67,6 +134,9 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>Public Profile</Text>
 
             <BlurView intensity={20} tint="dark" style={styles.card}>
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {success ? <Text style={styles.successText}>{success}</Text> : null}
+
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Display Name</Text>
                 <View style={styles.inputWrapper}>
@@ -75,6 +145,7 @@ export default function ProfileScreen() {
                     style={styles.input}
                     value={name}
                     onChangeText={setName}
+                    placeholder="Enter your name"
                     placeholderTextColor="rgba(255,255,255,0.3)"
                   />
                 </View>
@@ -102,41 +173,26 @@ export default function ProfileScreen() {
                     value={github}
                     onChangeText={setGithub}
                     autoCapitalize="none"
+                    placeholder="e.g. johndoe"
                     placeholderTextColor="rgba(255,255,255,0.3)"
                   />
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.saveBtn} activeOpacity={0.8}>
-                <User size={18} color="#000" />
-                <Text style={styles.saveBtnText}>Save Changes</Text>
-              </TouchableOpacity>
-            </BlurView>
-          </View>
-
-          {/* Security Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Security</Text>
-            
-            <BlurView intensity={20} tint="dark" style={styles.card}>
-              <TouchableOpacity style={styles.actionRow} activeOpacity={0.7}>
-                <View style={styles.actionRowLeft}>
-                  <View style={styles.actionIconBox}>
-                    <User size={18} color="#fff" />
-                  </View>
-                  <Text style={styles.actionRowText}>Update Password</Text>
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.divider} />
-
-              <TouchableOpacity style={styles.actionRow} activeOpacity={0.7}>
-                <View style={styles.actionRowLeft}>
-                  <View style={styles.actionIconBox}>
-                    <User size={18} color="#fff" />
-                  </View>
-                  <Text style={styles.actionRowText}>Send Reset Email</Text>
-                </View>
+              <TouchableOpacity 
+                style={[styles.saveBtn, loading && styles.saveBtnDisabled]} 
+                activeOpacity={0.8}
+                onPress={handleSave}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <>
+                    <User size={18} color="#000" />
+                    <Text style={styles.saveBtnText}>Save Changes</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </BlurView>
           </View>
@@ -298,5 +354,19 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 16,
     fontWeight: '600',
+  },
+  errorText: {
+    color: '#ef4444',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  successText: {
+    color: '#22c55e',
+    marginBottom: 16,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  saveBtnDisabled: {
+    opacity: 0.5,
   },
 });

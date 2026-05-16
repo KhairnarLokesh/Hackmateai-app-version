@@ -11,14 +11,14 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { useRouter, useSegments } from 'expo-router';
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: 'index',
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 function InitialLayout() {
-  const { user, loading, teamId } = useAuth();
+  const { user, loading, teamId, profileCompleted } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -39,13 +39,19 @@ function InitialLayout() {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!user && !inAuthGroup) {
+      // Not logged in -> go to login
       router.replace('/(auth)/login');
-    } else if (user && !teamId && segments[1] !== 'team-setup') {
+    } else if (user && !profileCompleted && segments[1] !== 'profile-setup') {
+      // Logged in but profile not completed -> go to profile setup
+      router.replace('/(auth)/profile-setup');
+    } else if (user && profileCompleted && !teamId && segments[1] !== 'team-setup') {
+      // Profile completed but no team -> go to team setup
       router.replace('/(auth)/team-setup');
-    } else if (user && teamId && inAuthGroup) {
+    } else if (user && profileCompleted && teamId && inAuthGroup) {
+      // Everything complete -> go to main app
       router.replace('/(tabs)');
     }
-  }, [user, loading, teamId, segments]);
+  }, [user, loading, teamId, profileCompleted, segments]);
 
   useEffect(() => {
     if (!loading) {

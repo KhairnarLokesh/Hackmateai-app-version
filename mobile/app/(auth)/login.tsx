@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, View, Text, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
 import { doc, setDoc } from 'firebase/firestore';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
@@ -25,6 +26,7 @@ export default function LoginScreen() {
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
+        // Auth state listener in _layout will handle navigation
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         // Create user document in Firestore
@@ -32,7 +34,12 @@ export default function LoginScreen() {
           email: userCredential.user.email,
           createdAt: new Date().toISOString(),
           teamId: null,
+          profileCompleted: false,
+          displayName: null,
+          skills: null,
+          githubUsername: null,
         });
+        // Auth state listener in _layout will handle navigation to profile-setup
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');

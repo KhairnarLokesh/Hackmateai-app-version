@@ -20,16 +20,31 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { teamId } = useAuth();
+  const { teamId, userProfile } = useAuth();
   
   const [projects, setProjects] = useState<any[]>([]);
   const targetTeamId = teamId || 'DEMO_TEAM';
+
+  const getUserInitial = () => {
+    if (userProfile?.displayName) {
+      return userProfile.displayName.charAt(0).toUpperCase();
+    }
+    return 'U';
+  };
+
+  const getUserName = () => {
+    if (userProfile?.displayName) {
+      return userProfile.displayName.split(' ')[0]; // First name only
+    }
+    return 'User';
+  };
 
   React.useEffect(() => {
     const projectsRef = collection(db, 'teams', targetTeamId, 'projects');
@@ -65,14 +80,14 @@ export default function DashboardScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.username}>Hacker!</Text>
+            <Text style={styles.username}>{getUserName()}!</Text>
           </View>
           <View style={styles.avatarWrap}>
             <LinearGradient
               colors={['#22c55e', '#16a34a']}
               style={styles.avatarGradient}
             >
-              <Text style={styles.avatarText}>H</Text>
+              <Text style={styles.avatarText}>{getUserInitial()}</Text>
             </LinearGradient>
           </View>
         </View>

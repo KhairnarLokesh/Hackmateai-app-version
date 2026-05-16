@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, View, Text, ActivityIndicator } from 'react-native';
 import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { ThemedView } from '@/components/themed-view';
@@ -90,8 +91,14 @@ export default function TeamSetupScreen() {
     }
   };
 
-  const handleLogout = () => {
-    auth.signOut();
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      // The onAuthStateChanged listener in _layout.tsx will automatically
+      // redirect to /(auth)/login once user becomes null
+    } catch (err: any) {
+      console.error('Logout error:', err);
+    }
   };
 
   return (

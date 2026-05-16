@@ -17,8 +17,9 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { generateIdeaSpec, GeneratedProject } from '@/lib/ai-service';
 import { auth, db } from '@/lib/firebase';
-import { doc, setDoc, collection } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
+// @ts-ignore - Firebase Firestore types issue in React Native
+import { doc, setDoc } from 'firebase/firestore';
 
 export default function IdeaLabScreen() {
   const router = useRouter();

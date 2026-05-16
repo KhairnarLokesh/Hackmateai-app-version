@@ -15,6 +15,7 @@ import { ArrowLeft, Link as LinkIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 
@@ -44,7 +45,7 @@ export default function JoinProjectScreen() {
       const projectDoc = await getDoc(projectRef);
 
       if (projectDoc.exists()) {
-        router.replace(`/project/${cleanId}`);
+        router.push(`/project/${cleanId}` as any);
       } else {
         setError('Project not found. Please check the ID and try again.');
       }

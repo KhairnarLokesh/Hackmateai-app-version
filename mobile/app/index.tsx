@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,6 +26,10 @@ import {
   Zap,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
+import { doc, setDoc } from 'firebase/firestore';
 
 const { width } = Dimensions.get('window');
 
@@ -39,12 +45,75 @@ export default function LandingPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const handleAuth = () => {
-    router.replace('/(tabs)');
+  const handleAuth = async () => {
+    if (!email.trim() || !password.trim()) {
+      setError('Please enter your email and password.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      if (activeTab === 'login') {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+        // Auth state listener in _layout will handle navigation
+      } else {
+        // Sign Up
+        if (!name.trim()) {
+          setError('Please enter your name.');
+          setLoading(false);
+          return;
+        }
+        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        // Create user document in Firestore
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          email: userCredential.user.email,
+          displayName: name.trim(),
+          createdAt: new Date().toISOString(),
+          teamId: null,
+          profileCompleted: false,
+          skills: null,
+          githubUsername: null,
+        });
+        // Auth state listener in _layout will handle navigation to profile-setup
+      }
+    } catch (err: any) {
+      const msg = err.message || 'Authentication failed.';
+      // Make Firebase errors more user-friendly
+      if (msg.includes('user-not-found') || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
+        setError('Invalid email or password. Please try again.');
+      } else if (msg.includes('email-already-in-use')) {
+        setError('An account with this email already exists. Please log in.');
+      } else if (msg.includes('weak-password')) {
+        setError('Password should be at least 6 characters.');
+      } else if (msg.includes('invalid-email')) {
+        setError('Please enter a valid email address.');
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await signInAnonymously(auth);
+      // Auth state listener in _layout will handle navigation
+    } catch (err: any) {
+      setError('Guest login failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -105,8 +174,6 @@ export default function LandingPage() {
             ))}
           </ScrollView>
 
-          {/* Spacer to push auth card up if content is short, 
-              but we let the bottom sheet sit naturally */}
           <View style={{ height: 40 }} />
           
           {/* Floating Glass Auth Card */}
@@ -116,17 +183,19 @@ export default function LandingPage() {
               <View style={styles.authTabs}>
                 <TouchableOpacity 
                   style={[styles.authTab, activeTab === 'login' && styles.authTabActive]}
-                  onPress={() => setActiveTab('login')}
+                  onPress={() => { setActiveTab('login'); setError(''); }}
                 >
                   <Text style={[styles.authTabText, activeTab === 'login' && styles.authTabTextActive]}>Login</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.authTab, activeTab === 'signup' && styles.authTabActive]}
-                  onPress={() => setActiveTab('signup')}
+                  onPress={() => { setActiveTab('signup'); setError(''); }}
                 >
                   <Text style={[styles.authTabText, activeTab === 'signup' && styles.authTabTextActive]}>Sign Up</Text>
                 </TouchableOpacity>
               </View>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               {activeTab === 'signup' && (
                 <View style={styles.inputWrapper}>
@@ -136,6 +205,7 @@ export default function LandingPage() {
                     placeholderTextColor="rgba(255,255,255,0.4)"
                     value={name}
                     onChangeText={setName}
+                    autoCapitalize="words"
                   />
                 </View>
               )}
@@ -163,20 +233,23 @@ export default function LandingPage() {
                 />
               </View>
 
-              <TouchableOpacity style={styles.primaryBtn} onPress={handleAuth}>
-                <Text style={styles.primaryBtnText}>
-                  {activeTab === 'login' ? 'Continue' : 'Create Account'}
-                </Text>
-                <ArrowRight size={18} color="#000" />
+              <TouchableOpacity style={styles.primaryBtn} onPress={handleAuth} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <>
+                    <Text style={styles.primaryBtnText}>
+                      {activeTab === 'login' ? 'Continue' : 'Create Account'}
+                    </Text>
+                    <ArrowRight size={18} color="#000" />
+                  </>
+                )}
               </TouchableOpacity>
 
               <View style={styles.socialRow}>
-                <TouchableOpacity style={styles.socialBtn} onPress={handleAuth}>
-                  <Text style={styles.socialBtnText}>Google</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.socialBtn} onPress={handleAuth}>
-                  <Zap size={14} color="#fff" />
-                  <Text style={styles.socialBtnText}>Guest</Text>
+                <TouchableOpacity style={styles.socialBtn} onPress={handleGuestLogin} disabled={loading}>
+                  <Zap size={14} color="#fbbf24" />
+                  <Text style={styles.socialBtnText}>Guest Mode</Text>
                 </TouchableOpacity>
               </View>
               
@@ -193,7 +266,7 @@ export default function LandingPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a', // Fallback color
+    backgroundColor: '#0f172a',
   },
   scrollContent: {
     flexGrow: 1,
@@ -290,7 +363,7 @@ const styles = StyleSheet.create({
   },
   authContainerWrapper: {
     paddingHorizontal: 16,
-    marginTop: 'auto', // Pushes it to the bottom of the scroll view
+    marginTop: 'auto',
   },
   authCard: {
     padding: 24,
@@ -304,7 +377,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.3)',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   authTab: {
     flex: 1,
@@ -322,6 +395,12 @@ const styles = StyleSheet.create({
   },
   authTabTextActive: {
     color: '#fff',
+  },
+  errorText: {
+    color: '#ef4444',
+    marginBottom: 12,
+    textAlign: 'center',
+    fontSize: 13,
   },
   inputWrapper: {
     backgroundColor: 'rgba(0,0,0,0.3)',
@@ -345,6 +424,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
     gap: 8,
+    minHeight: 54,
   },
   primaryBtnText: {
     color: '#000',
@@ -355,6 +435,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 16,
+    justifyContent: 'center',
   },
   socialBtn: {
     flex: 1,

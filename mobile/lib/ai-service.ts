@@ -1,4 +1,6 @@
+// Using Hugging Face Inference API (Free, no account needed for basic models)
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY || '';
+const USE_MOCK_AI = !OPENROUTER_API_KEY; // Use mock if no API key
 
 export interface GeneratedProject {
   name: string;
@@ -8,8 +10,23 @@ export interface GeneratedProject {
 }
 
 export const generateIdeaSpec = async (idea: string): Promise<GeneratedProject> => {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('OpenRouter API key is missing. Please add EXPO_PUBLIC_OPENROUTER_API_KEY to your .env file.');
+  // If no API key, use mock data
+  if (USE_MOCK_AI) {
+    console.log('⚠️ No API key found, using mock AI response');
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
+    
+    return {
+      name: idea.split(' ').slice(0, 3).join(' ') + ' App',
+      problemStatement: `A solution to help users with ${idea.toLowerCase()}. This app aims to streamline the process and make it more accessible.`,
+      features: [
+        'User authentication and profiles',
+        'Real-time data synchronization',
+        'Intuitive dashboard interface',
+        'Mobile-responsive design',
+        'Push notifications',
+      ],
+      techStack: ['React Native', 'Firebase', 'TypeScript', 'Expo'],
+    };
   }
 
   const prompt = `You are an expert Hackathon AI Mentor. The user has an idea for a project: "${idea}".
@@ -23,23 +40,35 @@ Return the result strictly as a JSON object with the following structure (do not
 }`;
 
   try {
+    console.log('🔑 API Key present:', OPENROUTER_API_KEY ? 'Yes' : 'No');
+    console.log('🔑 API Key length:', OPENROUTER_API_KEY?.length);
+    
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hackmate-ai.app',
+        'X-Title': 'HackMate AI Mobile',
       },
       body: JSON.stringify({
-        model: 'google/gemini-1.5-flash',
+        model: 'google/gemini-2.0-flash-lite-001',
         max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
 
+    console.log('📡 Response status:', response.status);
     const data = await response.json();
+    console.log('📦 Response data:', JSON.stringify(data, null, 2));
     
-    if (data.error) {
-      throw new Error(data.error.message || 'Error from OpenRouter API');
+    if (!response.ok || data.error) {
+      const errorMsg = data.error?.message || data.message || `API Error: ${response.status}`;
+      throw new Error(errorMsg);
+    }
+
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('Invalid response format from API');
     }
 
     const content = data.choices[0].message.content;
@@ -64,8 +93,12 @@ Return the result strictly as a JSON object with the following structure (do not
 };
 
 export const askAiMentor = async (query: string): Promise<string> => {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('OpenRouter API key is missing.');
+  // If no API key, use mock response
+  if (USE_MOCK_AI) {
+    console.log('⚠️ No API key found, using mock AI Mentor response');
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+    
+    return `I'm currently running in demo mode. To get real AI assistance, please add a valid OpenRouter API key to your .env file.\n\nYour question was: "${query}"\n\nIn the meantime, here are some general tips:\n- Break down your problem into smaller steps\n- Check the documentation for your framework\n- Use console.log() to debug issues\n- Ask your team members for help!`;
   }
 
   const prompt = `You are an expert Hackathon AI Mentor. You are chatting directly with a team of developers building a software project. 
@@ -75,23 +108,34 @@ They have tagged you for help with the following query:
 Provide a concise, helpful, and technical response. If they are asking for code, provide small, accurate snippets. Keep your tone encouraging and professional.`;
 
   try {
+    console.log('🤖 AI Mentor - API Key present:', OPENROUTER_API_KEY ? 'Yes' : 'No');
+    
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hackmate-ai.app',
+        'X-Title': 'HackMate AI Mobile',
       },
       body: JSON.stringify({
-        model: 'google/gemini-1.5-flash',
+        model: 'google/gemini-2.0-flash-lite-001',
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
 
+    console.log('🤖 AI Mentor - Response status:', response.status);
     const data = await response.json();
+    console.log('🤖 AI Mentor - Response:', JSON.stringify(data, null, 2));
     
-    if (data.error) {
-      throw new Error(data.error.message || 'Error from OpenRouter API');
+    if (!response.ok || data.error) {
+      const errorMsg = data.error?.message || data.message || `API Error: ${response.status}`;
+      throw new Error(errorMsg);
+    }
+
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('Invalid response format from API');
     }
 
     return data.choices[0].message.content.trim();

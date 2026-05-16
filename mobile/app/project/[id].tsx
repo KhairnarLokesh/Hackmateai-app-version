@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { ArrowLeft, Plus, MoreVertical, LayoutList } from 'lucide-react-native';
+import { ArrowLeft, Plus, LayoutList } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase Firestore types issue in React Native
 import { doc, getDoc, collection, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 

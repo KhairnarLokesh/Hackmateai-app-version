@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 import { Send, Bot, User as UserIcon, MessageSquare, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth, db } from '@/lib/firebase';
+// @ts-ignore - Firebase v12 types don't resolve correctly in React Native module system
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
 import { askAiMentor } from '@/lib/ai-service';
@@ -52,8 +53,10 @@ export default function ChatScreen() {
       messagesRef = collection(db, 'users', uid, 'mentor_messages');
     }
     
-    const unsubscribe = onSnapshot(messagesRef, (snapshot) => {
-      const fetchedMessages = snapshot.docs.map(doc => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = onSnapshot(messagesRef, (snapshot: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fetchedMessages = snapshot.docs.map((doc: any) => ({
         id: doc.id,
         ...doc.data()
       })) as Message[];
@@ -158,8 +161,8 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView 
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       <LinearGradient
         colors={['#0f172a', '#1e1b4b', '#064e3b']}
@@ -235,7 +238,7 @@ export default function ChatScreen() {
         </View>
       )}
 
-      <BlurView intensity={40} tint="dark" style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 100) }]}>
+      <BlurView intensity={40} tint="dark" style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TextInput
           style={styles.textInput}
           placeholder={activeMode === 'team' ? "Type a message..." : "Ask your AI Mentor..."}
