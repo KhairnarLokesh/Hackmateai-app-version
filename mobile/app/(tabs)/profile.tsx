@@ -1,37 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TextInput,
+  TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import {
-  User,
+  User, GitBranch, Code2, LogOut, Save, CheckCircle2, Mail, Shield,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth-context';
 import { auth, db } from '@/lib/firebase';
-// @ts-ignore - Firebase Firestore types issue in React Native
+// @ts-ignore
 import { doc, updateDoc } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, updatePassword, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+
+const C = {
+  bg: '#08090E',
+  surface: '#12151F',
+  surfaceHigh: '#1C2030',
+  accent: '#7C3AED',
+  accentSoft: 'rgba(124,58,237,0.15)',
+  green: '#10B981',
+  greenSoft: 'rgba(16,185,129,0.15)',
+  red: '#EF4444',
+  redSoft: 'rgba(239,68,68,0.1)',
+  text: '#FFFFFF',
+  textSecondary: 'rgba(255,255,255,0.55)',
+  textMuted: 'rgba(255,255,255,0.3)',
+  border: 'rgba(255,255,255,0.07)',
+};
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, userProfile, refreshTeamId } = useAuth();
 
+  // Profile fields
   const [name, setName] = useState('');
   const [skills, setSkills] = useState('');
   const [github, setGithub] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  const [saveErr, setSaveErr] = useState('');
+
+  // Password fields
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [changingPw, setChangingPw] = useState(false);
+  const [pwMsg, setPwMsg] = useState('');
+  const [pwErr, setPwErr] = useState('');
+
+  // Reset email loading
+  const [sendingReset, setSendingReset] = useState(false);
 
   useEffect(() => {
     if (userProfile) {
@@ -42,331 +61,187 @@ export default function ProfileScreen() {
   }, [userProfile]);
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      setError('Please enter your name');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
+    if (!name.trim()) { setSaveErr('Name is required'); return; }
+    setSaving(true); setSaveErr(''); setSaveMsg('');
     try {
-      if (!user) {
-        setError('No user logged in');
-        return;
-      }
-
-      // Update Firebase Auth profile
-      await updateProfile(user, {
-        displayName: name.trim(),
-      });
-
-      // Update Firestore user document
-      await updateDoc(doc(db, 'users', user.uid), {
+      await updateProfile(user!, { displayName: name.trim() });
+      await updateDoc(doc(db, 'users', user!.uid), {
         displayName: name.trim(),
         skills: skills.trim() || null,
         githubUsername: github.trim() || null,
         profileCompleted: true,
         updatedAt: new Date().toISOString(),
       });
-
       await refreshTeamId();
-      setSuccess('Profile updated successfully!');
-      
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update profile');
+      setSaveMsg('Profile updated!');
+      setTimeout(() => setSaveMsg(''), 3000);
+    } catch (e: any) {
+      setSaveErr(e.message || 'Update failed');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleLogout = async () => {
+  const handleChangePassword = async () => {
+    if (!currentPw || !newPw || !confirmPw) { setPwErr('All fields required'); return; }
+    if (newPw !== confirmPw) { setPwErr('Passwords do not match'); return; }
+    if (newPw.length < 6) { setPwErr('Min 6 characters'); return; }
+    setChangingPw(true); setPwErr(''); setPwMsg('');
     try {
-      await auth.signOut();
-      // The auth listener in _layout.tsx will redirect to /(auth)/login automatically
-    } catch (err: any) {
-      console.error('Logout error:', err);
+      const credential = EmailAuthProvider.credential(user!.email!, currentPw);
+      await reauthenticateWithCredential(user!, credential);
+      await updatePassword(user!, newPw);
+      setPwMsg('Password changed successfully!');
+      setCurrentPw(''); setNewPw(''); setConfirmPw('');
+      setTimeout(() => setPwMsg(''), 3000);
+    } catch (e: any) {
+      setPwErr(e.code === 'auth/wrong-password' ? 'Current password is incorrect' : e.message);
+    } finally {
+      setChangingPw(false);
     }
   };
 
-  const getInitial = () => {
-    if (name) return name.charAt(0).toUpperCase();
-    if (user?.email) return user.email.charAt(0).toUpperCase();
-    return 'U';
+  const handleResetEmail = async () => {
+    if (!user?.email) return;
+    setSendingReset(true);
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      Alert.alert('Email Sent', `Password reset email sent to ${user.email}`);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSendingReset(false);
+    }
   };
+
+  const handleLogout = () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log Out', style: 'destructive', onPress: () => auth.signOut() },
+    ]);
+  };
+
+  const initial = (name || user?.email || 'U').charAt(0).toUpperCase();
+  const isEmailUser = user?.providerData?.[0]?.providerId === 'password';
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#0f172a', '#1e1b4b', '#064e3b']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 20 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(insets.top, 20) }]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.avatarWrap}>
-              <LinearGradient
-                colors={['#22c55e', '#16a34a']}
-                style={styles.avatarGradient}
-              >
-                <Text style={styles.avatarText}>{getInitial()}</Text>
-              </LinearGradient>
-            </View>
-            <Text style={styles.username}>{name || 'User'}</Text>
-            <Text style={styles.email}>{user?.email || 'No email'}</Text>
+        {/* Avatar */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initial}</Text>
           </View>
+          <Text style={styles.profileName}>{name || 'Your Profile'}</Text>
+          <Text style={styles.profileEmail}>{user?.email || 'Guest'}</Text>
+        </View>
 
-          {/* Profile Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Public Profile</Text>
+        {/* ── Public Profile ── */}
+        <Text style={styles.sectionLabel}>PUBLIC PROFILE</Text>
+        <View style={styles.card}>
+          <InputField label="Display Name" icon={<User size={16} color={C.textMuted} />}
+            value={name} onChangeText={setName} placeholder="Your full name" />
+          <InputField label="Skills" icon={<Code2 size={16} color={C.textMuted} />}
+            value={skills} onChangeText={setSkills} placeholder="React, Python, Figma…" />
+          <InputField label="GitHub Username" icon={<GitBranch size={16} color={C.textMuted} />}
+            value={github} onChangeText={setGithub} placeholder="yourusername"
+            autoCapitalize="none" />
 
-            <BlurView intensity={20} tint="dark" style={styles.card}>
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              {success ? <Text style={styles.successText}>{success}</Text> : null}
+          {!!saveErr && <Text style={styles.errText}>{saveErr}</Text>}
+          {!!saveMsg && <View style={styles.successRow}><CheckCircle2 size={14} color={C.green} /><Text style={styles.successText}>{saveMsg}</Text></View>}
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Display Name</Text>
-                <View style={styles.inputWrapper}>
-                  <User size={18} color="rgba(255,255,255,0.5)" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Enter your name"
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                  />
-                </View>
-              </View>
+          <TouchableOpacity style={[styles.btn, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" size="small" /> : <><Save size={15} color="#fff" /><Text style={styles.btnText}>Save Changes</Text></>}
+          </TouchableOpacity>
+        </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>My Skills</Text>
-                <View style={styles.inputWrapper}>
-                  <TextInput
-                    style={[styles.input, { paddingLeft: 16 }]}
-                    value={skills}
-                    onChangeText={setSkills}
-                    placeholder="e.g. React, Python"
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                  />
-                </View>
-              </View>
+        {/* ── Security (email users only) ── */}
+        {isEmailUser && (
+          <>
+            <Text style={styles.sectionLabel}>SECURITY</Text>
+            <View style={styles.card}>
+              <InputField label="Current Password" icon={<Shield size={16} color={C.textMuted} />}
+                value={currentPw} onChangeText={setCurrentPw} placeholder="••••••••" secureTextEntry />
+              <InputField label="New Password" icon={<Shield size={16} color={C.textMuted} />}
+                value={newPw} onChangeText={setNewPw} placeholder="Min 6 characters" secureTextEntry />
+              <InputField label="Confirm New Password" icon={<Shield size={16} color={C.textMuted} />}
+                value={confirmPw} onChangeText={setConfirmPw} placeholder="Repeat new password" secureTextEntry />
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>GitHub Username</Text>
-                <View style={styles.inputWrapper}>
-                  <User size={18} color="rgba(255,255,255,0.5)" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    value={github}
-                    onChangeText={setGithub}
-                    autoCapitalize="none"
-                    placeholder="e.g. johndoe"
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                  />
-                </View>
-              </View>
+              {!!pwErr && <Text style={styles.errText}>{pwErr}</Text>}
+              {!!pwMsg && <View style={styles.successRow}><CheckCircle2 size={14} color={C.green} /><Text style={styles.successText}>{pwMsg}</Text></View>}
 
-              <TouchableOpacity 
-                style={[styles.saveBtn, loading && styles.saveBtnDisabled]} 
-                activeOpacity={0.8}
-                onPress={handleSave}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <>
-                    <User size={18} color="#000" />
-                    <Text style={styles.saveBtnText}>Save Changes</Text>
-                  </>
-                )}
+              <TouchableOpacity style={[styles.btn, changingPw && { opacity: 0.5 }]} onPress={handleChangePassword} disabled={changingPw}>
+                {changingPw ? <ActivityIndicator color="#fff" size="small" /> : <><Shield size={15} color="#fff" /><Text style={styles.btnText}>Change Password</Text></>}
               </TouchableOpacity>
-            </BlurView>
-          </View>
 
-          {/* Logout */}
-          <View style={styles.section}>
-            <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8} onPress={handleLogout}>
-              <User size={20} color="#ef4444" />
-              <Text style={styles.logoutBtnText}>Log Out</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity style={styles.outlineBtn} onPress={handleResetEmail} disabled={sendingReset}>
+                {sendingReset ? <ActivityIndicator color={C.accent} size="small" /> : <><Mail size={15} color={C.accent} /><Text style={styles.outlineBtnText}>Send Reset Email</Text></>}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {/* ── Logout ── */}
+        <Text style={styles.sectionLabel}>ACCOUNT</Text>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <LogOut size={16} color={C.red} />
+          <Text style={styles.logoutText}>Log Out</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function InputField({ label, icon, value, onChangeText, placeholder, secureTextEntry, autoCapitalize }: any) {
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={fieldStyles.label}>{label}</Text>
+      <View style={fieldStyles.row}>
+        <View style={fieldStyles.icon}>{icon}</View>
+        <TextInput
+          style={fieldStyles.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="rgba(255,255,255,0.2)"
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize || 'words'}
+        />
+      </View>
     </View>
   );
 }
 
+const fieldStyles = StyleSheet.create({
+  label: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.45)', marginBottom: 7, letterSpacing: 0.4 },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C2030', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  icon: { paddingLeft: 14 },
+  input: { flex: 1, color: '#fff', paddingVertical: 13, paddingHorizontal: 10, fontSize: 15 },
+});
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 120, // space for tab bar
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-    marginTop: 16,
-  },
-  avatarWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 16,
-  },
-  avatarGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    color: '#000',
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  username: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  email: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  section: {
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 16,
-  },
-  card: {
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    overflow: 'hidden',
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  inputIcon: {
-    marginLeft: 16,
-  },
-  input: {
-    flex: 1,
-    color: '#fff',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    fontSize: 16,
-  },
-  saveBtn: {
-    backgroundColor: '#22c55e',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 8,
-    gap: 8,
-  },
-  saveBtnText: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  actionRow: {
-    paddingVertical: 12,
-  },
-  actionRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  actionIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionRowText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#fff',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginVertical: 4,
-  },
-  logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-    gap: 8,
-  },
-  logoutBtnText: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  errorText: {
-    color: '#ef4444',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  successText: {
-    color: '#22c55e',
-    marginBottom: 16,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  saveBtnDisabled: {
-    opacity: 0.5,
-  },
+  root: { flex: 1, backgroundColor: C.bg },
+  scroll: { paddingHorizontal: 20, paddingBottom: 24 },
+  avatarSection: { alignItems: 'center', marginBottom: 28 },
+  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.accent, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  avatarText: { fontSize: 28, fontWeight: '800', color: '#fff' },
+  profileName: { fontSize: 20, fontWeight: '800', color: C.text, letterSpacing: -0.4 },
+  profileEmail: { fontSize: 13, color: C.textSecondary, marginTop: 3 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: C.textMuted, letterSpacing: 1, marginBottom: 10, marginTop: 20 },
+  card: { backgroundColor: C.surface, borderRadius: 18, padding: 16, borderWidth: 1, borderColor: C.border },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14, marginTop: 8 },
+  btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  outlineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 13, marginTop: 8, borderWidth: 1, borderColor: 'rgba(124,58,237,0.4)', backgroundColor: C.accentSoft },
+  outlineBtnText: { color: C.accent, fontWeight: '700', fontSize: 14 },
+  errText: { color: C.red, fontSize: 13, marginTop: 4, marginBottom: 4 },
+  successRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, marginBottom: 4 },
+  successText: { color: C.green, fontSize: 13, fontWeight: '600' },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.redSoft, borderRadius: 14, paddingVertical: 15, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)' },
+  logoutText: { color: C.red, fontWeight: '700', fontSize: 15 },
 });

@@ -144,3 +144,54 @@ Provide a concise, helpful, and technical response. If they are asking for code,
     return 'I encountered an error while trying to think. Please try asking again! (' + error.message + ')';
   }
 };
+
+export interface GeneratedTask {
+  title: string;
+  description: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  effort: 'Low' | 'Medium' | 'High';
+}
+
+export const generateTasks = async (projectName: string, features: string[]): Promise<GeneratedTask[]> => {
+  if (USE_MOCK_AI) {
+    await new Promise(r => setTimeout(r, 1200));
+    return [
+      { title: 'Set up project repository', description: 'Initialize git repo and folder structure', priority: 'High', effort: 'Low' },
+      { title: 'Design database schema', description: 'Plan and create all data models', priority: 'Critical', effort: 'Medium' },
+      { title: 'Build authentication flow', description: 'Sign-up, login, and session management', priority: 'High', effort: 'High' },
+      { title: 'Create main UI screens', description: 'Design and implement core app screens', priority: 'Medium', effort: 'High' },
+      { title: 'Write API endpoints', description: 'Backend routes for core functionality', priority: 'High', effort: 'High' },
+      { title: 'Prepare demo presentation', description: 'Slides and demo script for judging', priority: 'Critical', effort: 'Medium' },
+    ];
+  }
+
+  const prompt = `You are a hackathon project manager. Project: "${projectName}". Features: ${features.join(', ')}.
+Generate 6-8 specific development tasks. Return ONLY a raw JSON array, no markdown fences:
+[{"title":"Task title","description":"One sentence","priority":"High","effort":"Medium"}]
+Priority: Low|Medium|High|Critical. Effort: Low|Medium|High.`;
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hackmate-ai.app',
+        'X-Title': 'HackMate AI Mobile',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-lite-001',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error?.message || 'API error');
+    let content = data.choices[0].message.content.trim()
+      .replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '');
+    return JSON.parse(content);
+  } catch (error: any) {
+    throw new Error('Failed to generate tasks: ' + error.message);
+  }
+};
+
