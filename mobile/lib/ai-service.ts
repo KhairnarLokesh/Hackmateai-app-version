@@ -248,3 +248,96 @@ Effort must be one of: Low, Medium, High.`;
     throw new Error('Failed to generate problem and tasks: ' + error.message);
   }
 };
+
+export interface PitchDeckResponse {
+  pitchDeck: string;
+  mermaidDiagram: string;
+}
+
+export const generatePitchDeck = async (projectName: string, problemStatement: string, features: string[], tasks: any[]): Promise<PitchDeckResponse> => {
+  if (USE_MOCK_AI) {
+    await new Promise(r => setTimeout(r, 1500));
+    return {
+      pitchDeck: `# Pitch Deck: ${projectName}
+
+## Slide 1: The Hook
+Welcome to ${projectName}! Are you tired of dealing with [insert problem]? We have the solution.
+
+## Slide 2: The Problem
+${problemStatement}
+
+## Slide 3: Our Solution
+We built an app with the following features:
+${features.map(f => '- ' + f).join('\n')}
+
+## Slide 4: Development & Architecture
+We successfully implemented the following tasks during this hackathon:
+${tasks.map(t => '- ' + t.title).join('\n')}
+
+## Slide 5: Future Roadmap
+- Launch beta version
+- Gather user feedback
+- Expand feature set`,
+      mermaidDiagram: `graph TD;
+  Client[Mobile App] --> Auth[Firebase Auth];
+  Client --> DB[(Firestore DB)];
+  Client --> API[OpenRouter AI];`
+    };
+  }
+
+  const prompt = `You are a startup advisor helping a team present their hackathon project.
+Project Name: "${projectName}"
+Problem Statement: "${problemStatement}"
+Features: ${features.join(', ')}
+Completed/Planned Tasks: ${tasks.map(t => t.title).join(', ')}
+
+Please generate a compelling, well-structured 5-slide presentation outline in Markdown format.
+Slide 1: The Hook / Title
+Slide 2: The Problem
+Slide 3: Our Solution
+Slide 4: Architecture & What We Built
+Slide 5: Future Roadmap / Next Steps
+
+ALSO, generate a Mermaid.js diagram representing the system architecture based on the features and tasks. Use standard Mermaid graph syntax.
+
+Return your response EXACTLY in this format (no JSON, just the raw text with these delimiters):
+===PITCH DECK===
+(your markdown outline here)
+===MERMAID===
+(your mermaid graph here)`;
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hackmate-ai.app',
+        'X-Title': 'HackMate AI Mobile',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-lite-001',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error?.message || 'API error');
+    
+    const rawContent = data.choices[0].message.content.trim();
+    
+    let pitchDeck = rawContent;
+    let mermaidDiagram = '';
+    
+    const parts = rawContent.split(/===\s*MERMAID\s*===/i);
+    if (parts.length > 1) {
+      pitchDeck = parts[0].replace(/===\s*PITCH DECK\s*===/i, '').trim();
+      mermaidDiagram = parts[1].replace(/```mermaid/gi, '').replace(/```/g, '').trim();
+    }
+    
+    return { pitchDeck, mermaidDiagram };
+  } catch (error: any) {
+    throw new Error('Failed to generate pitch deck: ' + error.message);
+  }
+};
+
