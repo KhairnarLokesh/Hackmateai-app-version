@@ -14,7 +14,7 @@ import { auth, db } from '@/lib/firebase';
 // @ts-ignore
 import { doc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, query, where } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth-context';
-import { generateTasks } from '@/lib/ai-service';
+import { generateProblemAndTasks } from '@/lib/ai-service';
 
 const C = {
   bg: '#08090E',
@@ -49,6 +49,10 @@ export default function ProjectDetailScreen() {
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const [taskModalVisible, setTaskModalVisible] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', desc: '', priority: 'Medium', effort: 'Medium', status: 'todo' });
+
+  // AI Prompt Modal
+  const [aiPromptModalVisible, setAiPromptModalVisible] = useState(false);
+  const [aiPromptInput, setAiPromptInput] = useState('');
 
   // Status Action Sheet
   const [statusModalVisible, setStatusModalVisible] = useState(false);
@@ -88,13 +92,27 @@ export default function ProjectDetailScreen() {
     ]);
   };
 
-  const handleAIGenerateTasks = async () => {
+  const handleOpenAIGenerate = () => {
+    setAiPromptInput(project?.name || '');
+    setAiPromptModalVisible(true);
+  };
+
+  const executeAIGenerate = async () => {
+    if (!aiPromptInput.trim()) return;
+    setAiPromptModalVisible(false);
     setGeneratingTasks(true);
     try {
-      const features = project?.features || [];
-      const newTasks = await generateTasks(project?.name || 'Hackathon Project', features);
+      const result = await generateProblemAndTasks(aiPromptInput.trim());
+      
+      // Update Project with new name and problemStatement
+      const projRef = doc(db, 'teams', targetTeamId, 'projects', id as string);
+      await updateDoc(projRef, {
+        name: aiPromptInput.trim(),
+        problemStatement: result.problemStatement,
+      });
+
       const tasksRef = collection(db, 'teams', targetTeamId, 'projects', id as string, 'tasks');
-      for (const t of newTasks) {
+      for (const t of result.tasks) {
         await addDoc(tasksRef, {
           title: t.title,
           description: t.description,
@@ -105,7 +123,7 @@ export default function ProjectDetailScreen() {
           createdBy: auth.currentUser?.uid,
         });
       }
-      Alert.alert('Success', `Generated ${newTasks.length} tasks!`);
+      Alert.alert('Success', `Generated problem statement and ${result.tasks.length} tasks!`);
       setActiveTab('tasks');
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -233,9 +251,15 @@ export default function ProjectDetailScreen() {
                   <Text style={styles.detailValue}>{new Date(project.deadline).toLocaleDateString()}</Text>
                 </View>
               )}
+              {project.problemStatement && (
+                <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 6 }]}>
+                  <Text style={styles.detailLabel}>Problem Statement</Text>
+                  <Text style={[styles.detailValue, { lineHeight: 20 }]}>{project.problemStatement}</Text>
+                </View>
+              )}
             </View>
             
-            <TouchableOpacity style={styles.actionCard} onPress={handleAIGenerateTasks} disabled={generatingTasks}>
+            <TouchableOpacity style={styles.actionCard} onPress={handleOpenAIGenerate} disabled={generatingTasks}>
               <View style={[styles.actionIconBox, { backgroundColor: C.accentSoft }]}>
                 <Wand2 size={20} color={C.accent} />
               </View>
@@ -373,6 +397,37 @@ export default function ProjectDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── AI Prompt Modal ── */}
+      <Modal visible={aiPromptModalVisible} transparent animationType="slide" onRequestClose={() => setAiPromptModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setAiPromptModalVisible(false)} />
+          <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Auto-Generate Tasks</Text>
+            
+            <Text style={styles.cardDesc}>Enter your project name or a brief idea. The AI will generate a problem statement and automatically create tasks.</Text>
+
+            <Text style={styles.label}>Project Name / Idea</Text>
+            <TextInput 
+              style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
+              value={aiPromptInput} 
+              onChangeText={setAiPromptInput} 
+              placeholder="e.g. A social app for dog walkers..." 
+              placeholderTextColor={C.textMuted} 
+              multiline 
+            />
+
+            <TouchableOpacity style={[styles.primaryBtn, { marginTop: 8 }]} onPress={executeAIGenerate}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Wand2 size={18} color="#fff" />
+                <Text style={styles.primaryBtnText}>Generate with AI</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
 
     </View>
   );

@@ -195,3 +195,56 @@ Priority: Low|Medium|High|Critical. Effort: Low|Medium|High.`;
   }
 };
 
+export interface GeneratedTasksAndProblem {
+  problemStatement: string;
+  tasks: GeneratedTask[];
+}
+
+export const generateProblemAndTasks = async (projectName: string): Promise<GeneratedTasksAndProblem> => {
+  if (USE_MOCK_AI) {
+    await new Promise(r => setTimeout(r, 1200));
+    return {
+      problemStatement: `A mock problem statement for ${projectName}. This project solves various issues related to it.`,
+      tasks: [
+        { title: 'Set up project repository', description: 'Initialize git repo and folder structure', priority: 'High', effort: 'Low' },
+        { title: 'Design database schema', description: 'Plan and create all data models', priority: 'Critical', effort: 'Medium' },
+      ]
+    };
+  }
+
+  const prompt = `You are a hackathon project manager. The user has given a project idea or name: "${projectName}".
+Generate a brief problem statement for this project AND 6-8 specific development tasks.
+Return ONLY a raw JSON object, no markdown fences. The JSON must exactly match this structure:
+{
+  "problemStatement": "A 1-2 sentence description of the problem this solves.",
+  "tasks": [
+    {"title":"Task title","description":"One sentence","priority":"High","effort":"Medium"}
+  ]
+}
+Priority must be one of: Low, Medium, High, Critical.
+Effort must be one of: Low, Medium, High.`;
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hackmate-ai.app',
+        'X-Title': 'HackMate AI Mobile',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-lite-001',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error?.message || 'API error');
+    let content = data.choices[0].message.content.trim()
+      .replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '');
+    return JSON.parse(content);
+  } catch (error: any) {
+    throw new Error('Failed to generate problem and tasks: ' + error.message);
+  }
+};
