@@ -46,9 +46,11 @@ export default function ProjectDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
 
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const [taskModalVisible, setTaskModalVisible] = useState(false);
-  const [newTask, setNewTask] = useState({ title: '', desc: '', priority: 'Medium', effort: 'Medium', status: 'todo' });
+  const [newTask, setNewTask] = useState({ title: '', desc: '', priority: 'Medium', effort: 'Medium', status: 'todo', assigneeId: '' });
 
   // AI Prompt Modal
   const [aiPromptModalVisible, setAiPromptModalVisible] = useState(false);
@@ -77,6 +79,30 @@ export default function ProjectDetailScreen() {
 
     return () => { unsubProj(); unsubTasks(); };
   }, [id, targetTeamId]);
+
+  useEffect(() => {
+    if (!targetTeamId) return;
+    const fetchTeamMembers = async () => {
+      try {
+        const teamSnap = await getDoc(doc(db, 'teams', targetTeamId));
+        if (teamSnap.exists()) {
+          const membersList = teamSnap.data().members || [];
+          if (membersList.length > 0) {
+            const memberDocs = await Promise.all(
+              membersList.map((uid: string) => getDoc(doc(db, 'users', uid)))
+            );
+            const membersData = memberDocs
+              .filter(d => d.exists())
+              .map(d => ({ uid: d.id, ...d.data() }));
+            setTeamMembers(membersData);
+          }
+        }
+      } catch (e) {
+        console.log("Error fetching team members", e);
+      }
+    };
+    fetchTeamMembers();
+  }, [targetTeamId]);
 
   const handleDeleteProject = () => {
     Alert.alert('Delete Project', 'Are you sure? This cannot be undone.', [
@@ -141,11 +167,12 @@ export default function ProjectDetailScreen() {
         status: newTask.status,
         priority: newTask.priority,
         effort: newTask.effort,
+        assigneeId: newTask.assigneeId || null,
         createdAt: new Date().toISOString(),
         createdBy: auth.currentUser?.uid,
       });
       setTaskModalVisible(false);
-      setNewTask({ title: '', desc: '', priority: 'Medium', effort: 'Medium', status: 'todo' });
+      setNewTask({ title: '', desc: '', priority: 'Medium', effort: 'Medium', status: 'todo', assigneeId: '' });
     } catch (e) {
       Alert.alert('Error', 'Failed to create task');
     }
@@ -162,6 +189,19 @@ export default function ProjectDetailScreen() {
       setSelectedTaskForStatus(null);
     } catch (e) {
       Alert.alert('Error', 'Failed to update status');
+    }
+  };
+
+  const updateTaskAssignee = async (assigneeId: string) => {
+    if (!selectedTaskForStatus) return;
+    try {
+      setSelectedTaskForStatus({ ...selectedTaskForStatus, assigneeId });
+      await updateDoc(doc(db, 'teams', targetTeamId, 'projects', id as string, 'tasks', selectedTaskForStatus.id), {
+        assigneeId: assigneeId || null,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      Alert.alert('Error', 'Failed to assign task');
     }
   };
 
@@ -197,6 +237,8 @@ export default function ProjectDetailScreen() {
     if (p === 'Medium') return '#3B82F6';
     return C.green;
   };
+
+  const getAssignee = (uid: string) => teamMembers.find(m => m.uid === uid);
 
   return (
     <View style={styles.root}>
@@ -290,7 +332,7 @@ export default function ProjectDetailScreen() {
                 <Text style={styles.colTitle}>To Do ({todoTasks.length})</Text>
               </View>
               {todoTasks.map(t => (
-                <TaskCard key={t.id} task={t} onStatusPress={() => { setSelectedTaskForStatus(t); setStatusModalVisible(true); }} color={getPriorityColor(t.priority)} />
+                <TaskCard key={t.id} task={t} onStatusPress={() => { setSelectedTaskForStatus(t); setStatusModalVisible(true); }} color={getPriorityColor(t.priority)} assignee={getAssignee(t.assigneeId)} />
               ))}
             </View>
 
@@ -301,7 +343,7 @@ export default function ProjectDetailScreen() {
                 <Text style={styles.colTitle}>Doing ({doingTasks.length})</Text>
               </View>
               {doingTasks.map(t => (
-                <TaskCard key={t.id} task={t} onStatusPress={() => { setSelectedTaskForStatus(t); setStatusModalVisible(true); }} color={getPriorityColor(t.priority)} />
+                <TaskCard key={t.id} task={t} onStatusPress={() => { setSelectedTaskForStatus(t); setStatusModalVisible(true); }} color={getPriorityColor(t.priority)} assignee={getAssignee(t.assigneeId)} />
               ))}
             </View>
 
@@ -312,7 +354,7 @@ export default function ProjectDetailScreen() {
                 <Text style={styles.colTitle}>Done ({doneTasks.length})</Text>
               </View>
               {doneTasks.map(t => (
-                <TaskCard key={t.id} task={t} onStatusPress={() => { setSelectedTaskForStatus(t); setStatusModalVisible(true); }} color={getPriorityColor(t.priority)} />
+                <TaskCard key={t.id} task={t} onStatusPress={() => { setSelectedTaskForStatus(t); setStatusModalVisible(true); }} color={getPriorityColor(t.priority)} assignee={getAssignee(t.assigneeId)} />
               ))}
             </View>
           </View>
@@ -362,6 +404,25 @@ export default function ProjectDetailScreen() {
               </View>
             </View>
 
+            <Text style={styles.label}>Assign To</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={{ marginBottom: 24, maxHeight: 40 }}>
+              <TouchableOpacity 
+                style={[styles.chip, !newTask.assigneeId && { borderColor: C.accent, backgroundColor: C.accentSoft }]} 
+                onPress={() => setNewTask({...newTask, assigneeId: ''})}
+              >
+                <Text style={[styles.chipText, !newTask.assigneeId && { color: C.accent }]}>Unassigned</Text>
+              </TouchableOpacity>
+              {teamMembers.map(m => (
+                <TouchableOpacity 
+                  key={m.uid} 
+                  style={[styles.chip, newTask.assigneeId === m.uid && { borderColor: C.accent, backgroundColor: C.accentSoft }]} 
+                  onPress={() => setNewTask({...newTask, assigneeId: m.uid})}
+                >
+                  <Text style={[styles.chipText, newTask.assigneeId === m.uid && { color: C.accent }]}>{m.name || 'User'}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             <TouchableOpacity style={styles.primaryBtn} onPress={handleCreateTask}>
               <Text style={styles.primaryBtnText}>Create Task</Text>
             </TouchableOpacity>
@@ -369,13 +430,14 @@ export default function ProjectDetailScreen() {
         </View>
       </Modal>
 
-      {/* ── Status Change Modal ── */}
+      {/* ── Task Options Modal ── */}
       <Modal visible={statusModalVisible} transparent animationType="fade" onRequestClose={() => setStatusModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setStatusModalVisible(false)} />
           <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-            <Text style={styles.modalTitle}>Move Task to...</Text>
+            <Text style={styles.modalTitle}>Task Options</Text>
             
+            <Text style={[styles.label, { marginBottom: 8 }]}>Status</Text>
             <TouchableOpacity style={styles.statusOption} onPress={() => updateTaskStatus('todo')}>
               <View style={[styles.colDot, { backgroundColor: C.textMuted, marginRight: 10 }]} />
               <Text style={styles.statusOptionText}>To Do</Text>
@@ -386,13 +448,32 @@ export default function ProjectDetailScreen() {
               <Text style={styles.statusOptionText}>Doing</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.statusOption} onPress={() => updateTaskStatus('done')}>
+            <TouchableOpacity style={[styles.statusOption, { borderBottomWidth: 0 }]} onPress={() => updateTaskStatus('done')}>
               <View style={[styles.colDot, { backgroundColor: C.green, marginRight: 10 }]} />
               <Text style={styles.statusOptionText}>Done</Text>
             </TouchableOpacity>
+
+            <Text style={[styles.label, { marginTop: 16, marginBottom: 8 }]}>Assign To</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={{ marginBottom: 20, maxHeight: 40 }}>
+              <TouchableOpacity 
+                style={[styles.chip, !selectedTaskForStatus?.assigneeId && { borderColor: C.accent, backgroundColor: C.accentSoft }]} 
+                onPress={() => updateTaskAssignee('')}
+              >
+                <Text style={[styles.chipText, !selectedTaskForStatus?.assigneeId && { color: C.accent }]}>Unassigned</Text>
+              </TouchableOpacity>
+              {teamMembers.map(m => (
+                <TouchableOpacity 
+                  key={m.uid} 
+                  style={[styles.chip, selectedTaskForStatus?.assigneeId === m.uid && { borderColor: C.accent, backgroundColor: C.accentSoft }]} 
+                  onPress={() => updateTaskAssignee(m.uid)}
+                >
+                  <Text style={[styles.chipText, selectedTaskForStatus?.assigneeId === m.uid && { color: C.accent }]}>{m.name || 'User'}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             
             <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: C.surfaceHigh, marginTop: 16 }]} onPress={() => setStatusModalVisible(false)}>
-              <Text style={[styles.primaryBtnText, { color: C.text }]}>Cancel</Text>
+              <Text style={[styles.primaryBtnText, { color: C.text }]}>Done</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -434,7 +515,7 @@ export default function ProjectDetailScreen() {
 }
 
 // Sub-component for Task Card
-const TaskCard = ({ task, onStatusPress, color }: any) => (
+const TaskCard = ({ task, onStatusPress, color, assignee }: any) => (
   <TouchableOpacity style={styles.taskCard} onPress={onStatusPress} activeOpacity={0.7}>
     <View style={styles.taskCardHeader}>
       <Text style={styles.taskCardTitle}>{task.title}</Text>
@@ -445,7 +526,11 @@ const TaskCard = ({ task, onStatusPress, color }: any) => (
     {!!task.description && <Text style={styles.taskCardDesc} numberOfLines={2}>{task.description}</Text>}
     <View style={styles.taskCardFooter}>
       <View style={styles.taskMeta}><AlignLeft size={12} color={C.textMuted} /><Text style={styles.taskMetaText}>Desc</Text></View>
-      <View style={styles.avatarMini}><Text style={styles.avatarMiniText}>?</Text></View>
+      <View style={[styles.avatarMini, assignee ? { backgroundColor: C.accent, borderColor: C.accent } : {}]}>
+        <Text style={[styles.avatarMiniText, assignee ? { color: '#fff' } : {}]}>
+          {assignee ? (assignee.name || 'U').charAt(0).toUpperCase() : '?'}
+        </Text>
+      </View>
     </View>
   </TouchableOpacity>
 );
